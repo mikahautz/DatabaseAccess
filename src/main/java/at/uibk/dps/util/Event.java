@@ -1,5 +1,8 @@
 package at.uibk.dps.util;
 
+/**
+ * The log event.
+ */
 public enum Event {
     WORKFLOW_START,
     WORKFLOW_END,

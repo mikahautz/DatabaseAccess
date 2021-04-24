@@ -1,6 +1,5 @@
-package at.uibk.dps.cronjob;
+package at.uibk.dps.databases;
 
-import at.uibk.dps.mongoLogger.MongoDBAccess;
 import at.uibk.dps.util.Provider;
 import at.uibk.dps.util.Utils;
 import org.bson.Document;
@@ -11,12 +10,18 @@ import java.sql.*;
 import java.util.Properties;
 import java.util.function.Consumer;
 
+/**
+ * Class to handle communication with the mongo database.
+ */
 public class MariaDBAccess {
-
     private static final String JDBC_DRIVER = "org.mariadb.jdbc.Driver";
     private static final String PATH_TO_PROPERTIES = "mariaDatabase.properties";
     private static MariaDBAccess mariaDBAccess;
     private static Connection mariaConnection = null;
+
+    /**
+     * Updates the metadata DB with the given document and sets its 'done'-field to true.
+     */
     public static Consumer<Document> updateMD = new Consumer<Document>() {
         @Override
         public void accept(final Document document) {
@@ -55,37 +60,44 @@ public class MariaDBAccess {
         return mariaConnection;
     }
 
-    public static void doSth() {
-        Connection connection = getConnection();
-        Statement statement = null;
+//    public static void doSth() {
+//        Connection connection = getConnection();
+//        Statement statement = null;
+//
+//        MongoDBAccess.findNewEntries().forEach(updateMD);
+//
+//        try {
+//            statement = connection.createStatement();
+////            String query = "SELECT * FROM ?";
+////            PreparedStatement preparedStatement = connection.prepareStatement(query);
+////            preparedStatement.setString(1, "fcdeployment");
+////            ResultSet resultSet = preparedStatement.executeQuery();
+//            String query = "SELECT * FROM fcdeployment";
+//            ResultSet resultSet = statement.executeQuery(query);
+//            while (resultSet.next()) {
+//                int id = resultSet.getInt("id");
+//                int FCteam = resultSet.getInt("FCteam");
+//                int fd = resultSet.getInt("fd");
+//                String description = resultSet.getString("description");
+////                Date dateCreated = rs.getDate("date_created");
+////                boolean isAdmin = rs.getBoolean("is_admin");
+//
+//                // print the results
+//                System.out.format("%s, %s, %s, %s\n", id, FCteam, fd, description);
+//                connection.close();
+//            }
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//        }
+//    }
 
-        MongoDBAccess.findNewEntries().forEach(updateMD);
-
-        try {
-            statement = connection.createStatement();
-//            String query = "SELECT * FROM ?";
-//            PreparedStatement preparedStatement = connection.prepareStatement(query);
-//            preparedStatement.setString(1, "fcdeployment");
-//            ResultSet resultSet = preparedStatement.executeQuery();
-            String query = "SELECT * FROM fcdeployment";
-            ResultSet resultSet = statement.executeQuery(query);
-            while (resultSet.next()) {
-                int id = resultSet.getInt("id");
-                int FCteam = resultSet.getInt("FCteam");
-                int fd = resultSet.getInt("fd");
-                String description = resultSet.getString("description");
-//                Date dateCreated = rs.getDate("date_created");
-//                boolean isAdmin = rs.getBoolean("is_admin");
-
-                // print the results
-                System.out.format("%s, %s, %s, %s\n", id, FCteam, fd, description);
-                connection.close();
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
+    /**
+     * Gets the id from the metadata DB for the given provider.
+     *
+     * @param provider to get the id from
+     *
+     * @return the id from the provider in the DB
+     */
     private static int getProviderId(Provider provider) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
@@ -103,6 +115,14 @@ public class MariaDBAccess {
         return -1;
     }
 
+    /**
+     * Gets the id from the metadata DB for the functiontype with the given name and type.
+     *
+     * @param functionName to get the entry
+     * @param functionType to get the entry
+     *
+     * @return the id from the functiontype in the DB
+     */
     private static int getFunctionTypeId(String functionName, String functionType) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
@@ -121,6 +141,13 @@ public class MariaDBAccess {
         return -1;
     }
 
+    /**
+     * Gets the id from the metadata DB for the functionImplementation for the given name.
+     *
+     * @param functionImplementationName the name of the functionImplementation
+     *
+     * @return the id from the functionImplementation in the DB
+     */
     private static int getFunctionImplementationId(String functionImplementationName) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
@@ -138,17 +165,25 @@ public class MariaDBAccess {
         return -1;
     }
 
-    public static void updateFunctionType(Document document) {
+    /**
+     * Updates the functiontype table in the metadataDB for the given document.
+     *
+     * @param document to update the table with
+     */
+    private static void updateFunctionType(Document document) {
 //        if (document.getString("functionName") == null ||
 //                document.getString("functionType") == null) {
 //            return;
 //        }
         // TODO update cost
         Connection connection = getConnection();
+
+        // get the fields from the document
         String functionName = document.getString("functionName");
         String functionType = document.getString("functionType");
         Long RTT = document.getLong("RTT");
         boolean success = document.getBoolean("success");
+        // query to check if there is already an entry in the functiontype table
         String query = "SELECT * FROM functiontype WHERE name = ? AND type = ?";
         PreparedStatement preparedStatement = null;
         ResultSet resultSet = null;
@@ -158,19 +193,23 @@ public class MariaDBAccess {
             preparedStatement.setString(2, functionType);
             resultSet = preparedStatement.executeQuery();
 
+            // check if an update or insert has to be performed
             if (resultSet.next()) {
-                // update
+                // entry exists -> update
+                // get the fields from the entry
                 int invocations = resultSet.getInt("invocations");
                 double avgRTT = resultSet.getDouble("avgRTT");
                 double successRate = resultSet.getDouble("successRate");
                 int successfulInvocations = (int) Math.round(successRate * invocations);
 
+                // update the fields
                 double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
                 if (success) {
                     successfulInvocations++;
                 }
                 double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
                 // TODO update cost
+                // perform the update
                 String update = "UPDATE functiontype SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
                         + "name = ? AND type = ?";
                 preparedStatement = connection.prepareStatement(update);
@@ -198,7 +237,7 @@ public class MariaDBAccess {
         }
     }
 
-    public static void updateFunctionImplementation(Document document) {
+    private static void updateFunctionImplementation(Document document) {
 //        if (document.getString("functionName") == null ||
 //                document.getString("functionType") == null) {
 //            return;
@@ -207,6 +246,7 @@ public class MariaDBAccess {
         // TODO which value has 'name'?
         // TODO update cost
         Connection connection = getConnection();
+        // get the fields from the document
         String functionName = document.getString("functionName");
         String functionType = document.getString("functionType");
         Long RTT = document.getLong("RTT");
@@ -215,7 +255,7 @@ public class MariaDBAccess {
         int providerId = getProviderId(provider);
         int functionTypeId = getFunctionTypeId(functionName, functionType);
         String name = provider.name() + "." + functionName + "." + functionType;
-
+        // query to check if there is already an entry in the functionimplementation table
         String query = "SELECT * FROM functionimplementation WHERE name = ? AND functionType_id = ? AND provider = ?";
 
         PreparedStatement preparedStatement = null;
@@ -227,19 +267,23 @@ public class MariaDBAccess {
             preparedStatement.setInt(3, providerId);
             resultSet = preparedStatement.executeQuery();
 
+            // check if an update or insert has to be performed
             if (resultSet.next()) {
-                // update
+                // entry exists -> update
+                // get the fields from the entry
                 int invocations = resultSet.getInt("invocations");
                 double avgRTT = resultSet.getDouble("avgRTT");
                 double successRate = resultSet.getDouble("successRate");
                 int successfulInvocations = (int) Math.round(successRate * invocations);
 
+                // update the fields
                 double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
                 if (success) {
                     successfulInvocations++;
                 }
                 double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
                 // TODO update cost
+                // perform the update
                 String update = "UPDATE functionimplementation SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
                         + "functionType_id = ? AND provider = ?";
                 preparedStatement = connection.prepareStatement(update);
@@ -268,7 +312,7 @@ public class MariaDBAccess {
         }
     }
 
-    public static void updateFunctionDeployment(Document document) {
+    private static void updateFunctionDeployment(Document document) {
         // TODO get functionImplementationId from DB
         // TODO get execution amount of function deployment
         // TODO either insert or update
@@ -281,6 +325,7 @@ public class MariaDBAccess {
         // TODO which value has 'name'?
         // TODO update cost
         Connection connection = getConnection();
+        // get the fields from the document
         String functionName = document.getString("functionName");
         String functionType = document.getString("functionType");
         String function_id = document.getString("function_id");
@@ -293,6 +338,7 @@ public class MariaDBAccess {
         String name = functionName + "." + functionType + "." + function_id;
 
         // TODO add memorySize
+        // query to check if there is already an entry in the functiondeployment table
         String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ? AND KMS_Arn = ?";
 
         PreparedStatement preparedStatement = null;
@@ -303,19 +349,23 @@ public class MariaDBAccess {
             preparedStatement.setString(2, function_id);
             resultSet = preparedStatement.executeQuery();
 
+            // check if an update or insert has to be performed
             if (resultSet.next()) {
-                // update
+                // entry exists -> update
+                // get the fields from the entry
                 int invocations = resultSet.getInt("invocations");
                 double avgRTT = resultSet.getDouble("avgRTT");
                 double successRate = resultSet.getDouble("successRate");
                 int successfulInvocations = (int) Math.round(successRate * invocations);
 
+                // update the fields
                 double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
                 if (success) {
                     successfulInvocations++;
                 }
                 double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
                 // TODO update cost
+                // perform the update
                 String update = "UPDATE functiondeployment SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
                         + "functionImplementation_id = ? AND KMS_Arn = ?";
                 preparedStatement = connection.prepareStatement(update);

@@ -1,7 +1,6 @@
-package at.uibk.dps.mongoLogger;
+package at.uibk.dps.databases;
 
 
-import at.uibk.dps.cronjob.MariaDBAccess;
 import at.uibk.dps.util.Event;
 import at.uibk.dps.util.Type;
 import ch.qos.logback.classic.Level;
@@ -20,20 +19,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.util.*;
-import java.util.function.Consumer;
 
 import static com.mongodb.client.model.Filters.*;
-import static com.mongodb.client.model.Sorts.*;
 
+/**
+ * Class to handle communication with the mongo database.
+ */
 public class MongoDBAccess {
     private static final long workflowExecutionId = System.currentTimeMillis();
     private static final String PATH_TO_PROPERTIES = "mongoDatabase.properties";
-    public static Consumer<Document> printBlock = new Consumer<Document>() {
-        @Override
-        public void accept(final Document document) {
-            System.out.println(document.toJson());
-        }
-    };
     private static MongoClient mongoClient;
     private static MongoDBAccess mongoDBAccess;
     private static List<Document> entries = Collections.synchronizedList(new ArrayList<>());
@@ -46,6 +40,7 @@ public class MongoDBAccess {
         Logger mongoLogger = loggerContext.getLogger("org.mongodb.driver");
         mongoLogger.setLevel(Level.OFF);
 
+        // read the required properties from file
         Properties databaseFile = new Properties();
         try {
             databaseFile.load(new FileInputStream(PATH_TO_PROPERTIES));
@@ -58,7 +53,6 @@ public class MongoDBAccess {
         final String password = databaseFile.getProperty("password");
         DATABASE = databaseFile.getProperty("database");
         COLLECTION = databaseFile.getProperty("collection");
-
 
         MongoCredential sim = MongoCredential.createCredential(username, DATABASE, password.toCharArray());
         mongoClient = MongoClients.create
@@ -76,6 +70,9 @@ public class MongoDBAccess {
         return mongoClient;
     }
 
+    /**
+     * Method to save a log entry to a list of entries.
+     */
     public static void saveLog(Event event, String functionId, String functionName, String functionType, Long RTT, boolean success, Integer memorySize, int loopCounter, long startTime, Type type) {
         // TODO add missing fields
         Boolean done = null;
@@ -98,6 +95,12 @@ public class MongoDBAccess {
         entries.add(log);
     }
 
+    /**
+     * Gets the latest end date in the list of log entries regardless of whether the function was executed within a
+     * parallelFor loop or not.
+     *
+     * @return the latest end date of the current workflow execution
+     */
     public static long getLastEndDateOverall() {
         if (entries == null || entries.isEmpty()) {
             return 0;
@@ -111,6 +114,12 @@ public class MongoDBAccess {
                 .getTime();
     }
 
+    /**
+     * Gets the latest end date in the list of log entries that belongs to a function that was not executed within a
+     * parallelFor loop.
+     *
+     * @return the latest end date of a function outside of a parallelFor of the current workflow execution
+     */
     public static long getLastEndDateOutOfLoop() {
         if (entries == null || entries.isEmpty()) {
             return 0;
@@ -125,18 +134,12 @@ public class MongoDBAccess {
                 .getTime();
     }
 
-    public static long getLastEndDateOutOfLoopStored() {
-        MongoClient client = getConnection();
-        MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
-        MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
-        return dbCollection.find(and(eq("workflow_id", workflowExecutionId), eq("loopCounter", -1)))
-                .sort(descending("endTime"))
-                .limit(1)
-                .first()
-                .getDate("endTime")
-                .getTime();
-    }
-
+    /**
+     * Gets the latest end date in the list of log entries that belongs to a function that was executed within a
+     * parallelFor loop.
+     *
+     * @return the latest end date of a function inside of a parallelFor of the current workflow execution
+     */
     public static long getLastEndDateInLoop() {
         if (entries == null || entries.isEmpty()) {
             return 0;
@@ -151,18 +154,12 @@ public class MongoDBAccess {
                 .getTime();
     }
 
-    public static long getLastEndDateInLoopStored() {
-        MongoClient client = getConnection();
-        MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
-        MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
-        return dbCollection.find(and(eq("workflow_id", workflowExecutionId), not(eq("loopCounter", -1))))
-                .sort(descending("endTime"))
-                .limit(1)
-                .first()
-                .getDate("endTime")
-                .getTime();
-    }
-
+    /**
+     * Returns all entries from the logs that were executions, have a function_id field and have not been updated in the
+     * metadata DB already.
+     *
+     * @return a FindIterable containing documents
+     */
     public static FindIterable<Document> findNewEntries() {
         // TODO exclude canceled functions
         MongoClient client = getConnection();
@@ -172,6 +169,9 @@ public class MongoDBAccess {
                 eq("type", "EXEC")));
     }
 
+    /**
+     * Adds all documents stored in the list of entries to the mongo database.
+     */
     public static void addAllEntries() {
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
@@ -181,6 +181,11 @@ public class MongoDBAccess {
         }
     }
 
+    /**
+     * Sets the 'done' field in the mongoDB document to true.
+     *
+     * @param document to set the field
+     */
     public static void setAsDone(Document document) {
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
@@ -189,14 +194,11 @@ public class MongoDBAccess {
         dbCollection.updateOne(eq("_id", id), Updates.set("done", true));
     }
 
+    /**
+     * Closes the mongoDB connection.
+     */
     public static void close() {
         mongoClient.close();
-    }
-
-    public static void main(String[] args) {
-        // testing only TODO
-        findNewEntries().forEach(MariaDBAccess.updateMD);
-
     }
 
 }

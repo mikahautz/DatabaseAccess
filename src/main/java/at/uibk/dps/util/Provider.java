@@ -1,6 +1,8 @@
 package at.uibk.dps.util;
 
-/* Cloud providers */
+/**
+ * Cloud providers
+ */
 public enum Provider {
     IBM,
     AWS,
