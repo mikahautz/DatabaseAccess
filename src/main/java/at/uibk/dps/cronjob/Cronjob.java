@@ -5,7 +5,7 @@ import at.uibk.dps.databases.MongoDBAccess;
 
 import java.util.TimerTask;
 
-public class Scheduler extends TimerTask {
+public class Cronjob extends TimerTask {
 
     /**
      * Updates all undone logs in the metadata DB and sets its 'done'-field to true.

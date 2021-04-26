@@ -15,10 +15,12 @@ plugins {
 apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'com.github.johnrengelman.shadow'
+apply plugin: 'application'
 
 group = 'at.uibk.dps'
 description = "database-access"
 version = '1.0-SNAPSHOT'
+mainClassName = 'at.uibk.dps.cronjob.Main'
 sourceCompatibility = '8'
 
 repositories {
