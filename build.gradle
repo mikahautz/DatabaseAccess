@@ -3,7 +3,7 @@ buildscript {
         jcenter()
     }
     dependencies {
-        classpath 'com.github.jengelman.gradle.plugins:shadow:5.2.0'
+        classpath 'com.github.jengelman.gradle.plugins:shadow:6.1.0'
     }
 }
 
@@ -32,13 +32,13 @@ repositories {
 
 dependencies {
     implementation 'com.google.code.gson:gson:2.8.6'
-    compile group: 'org.mongodb', name: 'mongo-java-driver', version: '3.12.8'
-    compile group: 'org.mariadb.jdbc', name: 'mariadb-java-client', version: '2.7.2'
-    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
+    implementation group: 'org.mongodb', name: 'mongo-java-driver', version: '3.12.8'
+    implementation group: 'org.mariadb.jdbc', name: 'mariadb-java-client', version: '2.7.2'
+    implementation group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
 }
 
 shadowJar {
-    baseName = 'databaseAccess'
-    classifier = null
-    version = null
+    archiveBaseName.set('databaseAccess')
+    archiveClassifier.set('')
+    archiveVersion.set('')
 }
