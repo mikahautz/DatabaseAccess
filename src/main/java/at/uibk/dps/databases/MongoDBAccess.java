@@ -75,9 +75,9 @@ public class MongoDBAccess {
      */
     public static void saveLog(Event event, String functionId, String functionName, String functionType, String output, Long RTT, boolean success, Integer memorySize, int loopCounter, long startTime, Type type) {
         // TODO add missing fields
-        Boolean done = null;
+        Long done = null;
         if (event.toString().toLowerCase().contains("function")) {
-            done = false;
+            done = 0L;
         }
         Document log = new Document("workflow_id", workflowExecutionId)
                 .append("function_id", functionId)
@@ -166,7 +166,7 @@ public class MongoDBAccess {
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
-        return dbCollection.find(and(eq("done", Boolean.FALSE), not(eq("function_id", null)),
+        return dbCollection.find(and(eq("done", 0L), not(eq("function_id", null)),
                 eq("type", "EXEC")));
     }
 
@@ -183,17 +183,19 @@ public class MongoDBAccess {
     }
 
     /**
-     * Sets the 'done' field in the mongoDB document to true.
+     * Sets the 'done' field in the mongoDB document to the given value.
      *
      * @param document to set the field
+     * @param value    the value to set the field to, 1 means "done", 2 means "ignored"
      */
-    public static void setAsDone(Document document) {
+    public static void setAsDone(Document document, Long value) {
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
         ObjectId id = (ObjectId) document.get("_id");
-        dbCollection.updateOne(eq("_id", id), Updates.set("done", true));
+        dbCollection.updateOne(eq("_id", id), Updates.set("done", value));
     }
+
 
     /**
      * Closes the mongoDB connection.

@@ -1,7 +1,5 @@
 package at.uibk.dps.databases;
 
-import at.uibk.dps.util.Provider;
-import at.uibk.dps.util.Utils;
 import org.bson.Document;
 
 import java.io.FileInputStream;
@@ -18,6 +16,14 @@ public class MariaDBAccess {
     private static final String PATH_TO_PROPERTIES = "mariaDatabase.properties";
     private static MariaDBAccess mariaDBAccess;
     private static Connection mariaConnection = null;
+    /**
+     * Counts the amount of skipped logs while updating.
+     */
+    private static long skipped = 0;
+    /**
+     * Counts the amount of updated logs while updating.
+     */
+    private static long updated = 0;
 
     /**
      * Updates the metadata DB with the given document and sets its 'done'-field to true.
@@ -26,10 +32,19 @@ public class MariaDBAccess {
         @Override
         public void accept(final Document document) {
             if (document.getString("function_id") != null) {
-                updateFunctionType(document);
-                updateFunctionImplementation(document);
-                updateFunctionDeployment(document);
-                MongoDBAccess.setAsDone(document);
+                if (functionIdEntryExists(document)) {
+                    System.out.println("Updating entries for function with id '" + document.getString("function_id") + "'.");
+                    updateMetadata(document);
+                    updated++;
+                    // set the log entry as done
+                    MongoDBAccess.setAsDone(document, 1L);
+                } else {
+                    System.out.println("No entry for function with id '" + document.getString("function_id") +
+                            "' found. Skipped.");
+                    // set the log entry as ignored
+                    MongoDBAccess.setAsDone(document, 2L);
+                    skipped++;
+                }
             }
         }
     };
@@ -60,104 +75,66 @@ public class MariaDBAccess {
         return mariaConnection;
     }
 
-//    public static void doSth() {
-//        Connection connection = getConnection();
-//        Statement statement = null;
-//
-//        MongoDBAccess.findNewEntries().forEach(updateMD);
-//
-//        try {
-//            statement = connection.createStatement();
-////            String query = "SELECT * FROM ?";
-////            PreparedStatement preparedStatement = connection.prepareStatement(query);
-////            preparedStatement.setString(1, "fcdeployment");
-////            ResultSet resultSet = preparedStatement.executeQuery();
-//            String query = "SELECT * FROM fcdeployment";
-//            ResultSet resultSet = statement.executeQuery(query);
-//            while (resultSet.next()) {
-//                int id = resultSet.getInt("id");
-//                int FCteam = resultSet.getInt("FCteam");
-//                int fd = resultSet.getInt("fd");
-//                String description = resultSet.getString("description");
-////                Date dateCreated = rs.getDate("date_created");
-////                boolean isAdmin = rs.getBoolean("is_admin");
-//
-//                // print the results
-//                System.out.format("%s, %s, %s, %s\n", id, FCteam, fd, description);
-//                connection.close();
-//            }
-//        } catch (SQLException e) {
-//            e.printStackTrace();
-//        }
-//    }
-
     /**
-     * Gets the id from the metadata DB for the given provider.
+     * Checks if an entry with the function id (e.g. ARN) of the document exists in the functiondeployment table of the
+     * metadata DB.
      *
-     * @param provider to get the id from
+     * @param document to get the function id
      *
-     * @return the id from the provider in the DB
+     * @return true if it exists, false otherwise
      */
-    private static int getProviderId(Provider provider) {
-        Connection connection = getConnection();
-        PreparedStatement preparedStatement;
-        String query = "SELECT id FROM provider WHERE name = ?";
+    private static boolean functionIdEntryExists(Document document) {
         try {
-            preparedStatement = connection.prepareStatement(query);
-            preparedStatement.setString(1, provider.name());
-            ResultSet resultSet = preparedStatement.executeQuery();
-            if (resultSet.next()) {
-                return resultSet.getInt("id");
-            }
+            return getFunctionIdEntry(document.getString("function_id")).next();
         } catch (SQLException throwables) {
             throwables.printStackTrace();
         }
-        return -1;
+        return false;
+    }
+
+    /**
+     * Get the entry with the function id (e.g. ARN) of the document in the functiondeployment table of the metadata
+     * DB.
+     *
+     * @param functionId to get the entry
+     *
+     * @return the ResultSet
+     */
+    private static ResultSet getFunctionIdEntry(String functionId) {
+        Connection connection = getConnection();
+        String query = "SELECT * FROM functiondeployment WHERE KMS_Arn = ?";
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, functionId);
+            resultSet = preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+
+        return resultSet;
     }
 
     /**
      * Gets the id from the metadata DB for the functiontype with the given name and type.
      *
-     * @param functionName to get the entry
-     * @param functionType to get the entry
+     * @param functionImplementationId to get the entry
      *
      * @return the id from the functiontype in the DB
      */
-    private static int getFunctionTypeId(String functionName, String functionType) {
+    private static int getFunctionTypeId(int functionImplementationId) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
-        String query = "SELECT id FROM functiontype WHERE name = ? AND type = ?";
+        String query = "SELECT functionType_id FROM functionimplementation WHERE id = ?";
         try {
             preparedStatement = connection.prepareStatement(query);
-            preparedStatement.setString(1, functionName);
-            preparedStatement.setString(2, functionType);
+            preparedStatement.setInt(1, functionImplementationId);
             ResultSet resultSet = preparedStatement.executeQuery();
             if (resultSet.next()) {
-                return resultSet.getInt("id");
-            }
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
-        return -1;
-    }
-
-    /**
-     * Gets the id from the metadata DB for the functionImplementation for the given name.
-     *
-     * @param functionImplementationName the name of the functionImplementation
-     *
-     * @return the id from the functionImplementation in the DB
-     */
-    private static int getFunctionImplementationId(String functionImplementationName) {
-        Connection connection = getConnection();
-        PreparedStatement preparedStatement;
-        String query = "SELECT id FROM functionimplementation WHERE name = ?";
-        try {
-            preparedStatement = connection.prepareStatement(query);
-            preparedStatement.setString(1, functionImplementationName);
-            ResultSet resultSet = preparedStatement.executeQuery();
-            if (resultSet.next()) {
-                return resultSet.getInt("id");
+                return resultSet.getInt("functionType_id");
             }
         } catch (SQLException throwables) {
             throwables.printStackTrace();
@@ -168,240 +145,194 @@ public class MariaDBAccess {
     /**
      * Updates the functiontype table in the metadataDB for the given document.
      *
-     * @param document to update the table with
+     * @param document       to get the values
+     * @param functionTypeId to get the entry
      */
-    private static void updateFunctionType(Document document) {
-//        if (document.getString("functionName") == null ||
-//                document.getString("functionType") == null) {
-//            return;
-//        }
+    private static void updateFunctionType(Document document, int functionTypeId) {
         // TODO update cost
         Connection connection = getConnection();
 
         // get the fields from the document
-        String functionName = document.getString("functionName");
-        String functionType = document.getString("functionType");
         Long RTT = document.getLong("RTT");
         boolean success = document.getBoolean("success");
+
         // query to check if there is already an entry in the functiontype table
-        String query = "SELECT * FROM functiontype WHERE name = ? AND type = ?";
+        String query = "SELECT * FROM functiontype WHERE id = ?";
         PreparedStatement preparedStatement = null;
         ResultSet resultSet = null;
         try {
             preparedStatement = connection.prepareStatement(query);
-            preparedStatement.setString(1, functionName);
-            preparedStatement.setString(2, functionType);
+            preparedStatement.setInt(1, functionTypeId);
             resultSet = preparedStatement.executeQuery();
+            resultSet.next();
 
-            // check if an update or insert has to be performed
-            if (resultSet.next()) {
-                // entry exists -> update
-                // get the fields from the entry
-                int invocations = resultSet.getInt("invocations");
-                double avgRTT = resultSet.getDouble("avgRTT");
-                double successRate = resultSet.getDouble("successRate");
-                int successfulInvocations = (int) Math.round(successRate * invocations);
+            // get the fields from the entry
+            int invocations = resultSet.getInt("invocations");
+            double avgRTT = resultSet.getDouble("avgRTT");
+            double successRate = resultSet.getDouble("successRate");
+            int successfulInvocations = (int) Math.round(successRate * invocations);
 
-                // update the fields
-                double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
-                if (success) {
-                    successfulInvocations++;
-                }
-                double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
-                // TODO update cost
-                // perform the update
-                String update = "UPDATE functiontype SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
-                        + "name = ? AND type = ?";
-                preparedStatement = connection.prepareStatement(update);
-                preparedStatement.setDouble(1, newAvgRTT);
-                preparedStatement.setDouble(2, newSuccessRate);
-                preparedStatement.setInt(3, (invocations + 1));
-                preparedStatement.setString(4, functionName);
-                preparedStatement.setString(5, functionType);
-                preparedStatement.executeUpdate();
-            } else {
-                // insert new entry
-                String insert = "INSERT INTO functiontype (name, type, avgRTT, avgCost, successRate, invocations) "
-                        + "values (?, ?, ?, ?, ?, ?)";
-                preparedStatement = connection.prepareStatement(insert);
-                preparedStatement.setString(1, functionName);
-                preparedStatement.setString(2, functionType);
-                preparedStatement.setDouble(3, RTT);
-                preparedStatement.setDouble(4, 0);   // TODO
-                preparedStatement.setDouble(5, (success) ? 1 : 0);
-                preparedStatement.setInt(6, 1);
-                preparedStatement.execute();
+            // update the fields
+            double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            if (success) {
+                successfulInvocations++;
             }
+            double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
+
+            // TODO update cost
+            // update the functiontype table
+            String update = "UPDATE functiontype SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+                    + "id = ?";
+            preparedStatement = connection.prepareStatement(update);
+            preparedStatement.setDouble(1, newAvgRTT);
+            preparedStatement.setDouble(2, newSuccessRate);
+            preparedStatement.setInt(3, (invocations + 1));
+            preparedStatement.setInt(4, functionTypeId);
+            preparedStatement.executeUpdate();
+
         } catch (SQLException throwables) {
             throwables.printStackTrace();
         }
     }
 
-    private static void updateFunctionImplementation(Document document) {
-//        if (document.getString("functionName") == null ||
-//                document.getString("functionType") == null) {
-//            return;
-//        }
-        // TODO algorithm, implementationFilePath, language_id, computationWork, memoryWork, ioWOrk
-        // TODO which value has 'name'?
+    /**
+     * Updates the functionimplementation table in the metadataDB for the given document.
+     *
+     * @param document                 to get the values
+     * @param functionImplementationId to get the entry
+     */
+    private static void updateFunctionImplementation(Document document, int functionImplementationId) {
         // TODO update cost
         Connection connection = getConnection();
         // get the fields from the document
-        String functionName = document.getString("functionName");
-        String functionType = document.getString("functionType");
         Long RTT = document.getLong("RTT");
         Boolean success = document.getBoolean("success");
-        Provider provider = Utils.detectProvider(document.getString("function_id"));
-        int providerId = getProviderId(provider);
-        int functionTypeId = getFunctionTypeId(functionName, functionType);
-        String name = provider.name() + "." + functionName + "." + functionType;
+
         // query to check if there is already an entry in the functionimplementation table
-        String query = "SELECT * FROM functionimplementation WHERE name = ? AND functionType_id = ? AND provider = ?";
-
-        PreparedStatement preparedStatement = null;
-        ResultSet resultSet = null;
-        try {
-            preparedStatement = connection.prepareStatement(query);
-            preparedStatement.setString(1, name);
-            preparedStatement.setInt(2, functionTypeId);
-            preparedStatement.setInt(3, providerId);
-            resultSet = preparedStatement.executeQuery();
-
-            // check if an update or insert has to be performed
-            if (resultSet.next()) {
-                // entry exists -> update
-                // get the fields from the entry
-                int invocations = resultSet.getInt("invocations");
-                double avgRTT = resultSet.getDouble("avgRTT");
-                double successRate = resultSet.getDouble("successRate");
-                int successfulInvocations = (int) Math.round(successRate * invocations);
-
-                // update the fields
-                double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
-                if (success) {
-                    successfulInvocations++;
-                }
-                double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
-                // TODO update cost
-                // perform the update
-                String update = "UPDATE functionimplementation SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
-                        + "functionType_id = ? AND provider = ?";
-                preparedStatement = connection.prepareStatement(update);
-                preparedStatement.setDouble(1, newAvgRTT);
-                preparedStatement.setDouble(2, newSuccessRate);
-                preparedStatement.setInt(3, (invocations + 1));
-                preparedStatement.setInt(4, functionTypeId);
-                preparedStatement.setInt(5, providerId);
-                preparedStatement.executeUpdate();
-            } else {
-                // insert new entry
-                String insert = "INSERT INTO functionimplementation (name, functionType_id, provider, avgRTT, avgCost, successRate, invocations) "
-                        + "values (?, ?, ?, ?, ?, ?, ?)";
-                preparedStatement = connection.prepareStatement(insert);
-                preparedStatement.setString(1, name);
-                preparedStatement.setInt(2, functionTypeId);
-                preparedStatement.setInt(3, providerId);
-                preparedStatement.setDouble(4, RTT);
-                preparedStatement.setDouble(5, 0);   // TODO
-                preparedStatement.setDouble(6, (success) ? 1 : 0);
-                preparedStatement.setInt(7, 1);
-                preparedStatement.execute();
-            }
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
-        }
-    }
-
-    private static void updateFunctionDeployment(Document document) {
-        // TODO get functionImplementationId from DB
-        // TODO get execution amount of function deployment
-        // TODO either insert or update
-
-//        if (document.getString("functionName") == null ||
-//                document.getString("functionType") == null) {
-//            return;
-//        }
-        // TODO description, handlerName, input, isDeployed, timeout, computationalSpeed, memorySpeed, ioSpeed
-        // TODO which value has 'name'?
-        // TODO update cost
-        Connection connection = getConnection();
-        // get the fields from the document
-        String functionName = document.getString("functionName");
-        String functionType = document.getString("functionType");
-        String function_id = document.getString("function_id");
-        Integer memorySize = document.getInteger("memorySize");
-        Long RTT = document.getLong("RTT");
-        Boolean success = document.getBoolean("success");
-        Provider provider = Utils.detectProvider(function_id);
-        String functionImplementationName = provider.name() + "." + functionName + "." + functionType;
-        int functionImplementationId = getFunctionImplementationId(functionImplementationName);
-        String name = functionName + "." + functionType + "." + function_id;
-
-        // TODO add memorySize
-        // query to check if there is already an entry in the functiondeployment table
-        String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ? AND KMS_Arn = ?";
+        String query = "SELECT * FROM functionimplementation WHERE id = ?";
 
         PreparedStatement preparedStatement = null;
         ResultSet resultSet = null;
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setInt(1, functionImplementationId);
-            preparedStatement.setString(2, function_id);
             resultSet = preparedStatement.executeQuery();
+            // get the first entry
+            resultSet.next();
 
-            // check if an update or insert has to be performed
-            if (resultSet.next()) {
-                // entry exists -> update
-                // get the fields from the entry
-                int invocations = resultSet.getInt("invocations");
-                double avgRTT = resultSet.getDouble("avgRTT");
-                double successRate = resultSet.getDouble("successRate");
-                int successfulInvocations = (int) Math.round(successRate * invocations);
+            // get the fields from the entry
+            int invocations = resultSet.getInt("invocations");
+            double avgRTT = resultSet.getDouble("avgRTT");
+            double successRate = resultSet.getDouble("successRate");
+            int successfulInvocations = (int) Math.round(successRate * invocations);
 
-                // update the fields
-                double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
-                if (success) {
-                    successfulInvocations++;
-                }
-                double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
-                // TODO update cost
-                // perform the update
-                String update = "UPDATE functiondeployment SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
-                        + "functionImplementation_id = ? AND KMS_Arn = ?";
-                preparedStatement = connection.prepareStatement(update);
-                preparedStatement.setDouble(1, newAvgRTT);
-                preparedStatement.setDouble(2, newSuccessRate);
-                preparedStatement.setInt(3, (invocations + 1));
-                preparedStatement.setInt(4, functionImplementationId);
-                preparedStatement.setString(5, function_id);
-                preparedStatement.executeUpdate();
-            } else {
-                // insert new entry
-                // TODO change:
-                if (memorySize == null) {
-                    memorySize = -1;
-                }
-                String insert = "INSERT INTO functiondeployment (name, functionImplementation_id, KMS_Arn, description, "
-                        + "handlerName, isDeployed, memorySize, timeout, avgRTT, avgCost, successRate, invocations) "
-                        + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                preparedStatement = connection.prepareStatement(insert);
-                preparedStatement.setString(1, name);
-                preparedStatement.setInt(2, functionImplementationId);
-                preparedStatement.setString(3, function_id);
-                preparedStatement.setString(4, "");
-                preparedStatement.setString(5, "");
-                preparedStatement.setBoolean(6, true);
-                preparedStatement.setInt(7, memorySize);
-                preparedStatement.setInt(8, 0);
-                preparedStatement.setDouble(9, RTT);
-                preparedStatement.setDouble(10, 0);   // TODO
-                preparedStatement.setDouble(11, (success) ? 1 : 0);
-                preparedStatement.setInt(12, 1);
-                preparedStatement.execute();
+            // update the fields
+            double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            if (success) {
+                successfulInvocations++;
             }
+            double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
+
+            // TODO update cost
+            // update the functionimplementation table
+            String updateFunctionImplementation = "UPDATE functionimplementation SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+                    + "id = ?";
+            preparedStatement = connection.prepareStatement(updateFunctionImplementation);
+            preparedStatement.setDouble(1, newAvgRTT);
+            preparedStatement.setDouble(2, newSuccessRate);
+            preparedStatement.setInt(3, (invocations + 1));
+            preparedStatement.setInt(4, functionImplementationId);
+            preparedStatement.executeUpdate();
+
         } catch (SQLException throwables) {
             throwables.printStackTrace();
         }
     }
 
+    /**
+     * Updates the functiondeployment table in the metadataDB for the given document.
+     *
+     * @param document to get the values
+     * @param entry    the entry to update
+     */
+    private static void updateFunctionDeployment(Document document, ResultSet entry) {
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement = null;
+
+        String function_id = document.getString("function_id");
+        Long RTT = document.getLong("RTT");
+        Boolean success = document.getBoolean("success");
+
+        try {
+            // get the required fields
+            int invocations = entry.getInt("invocations");
+            double avgRTT = entry.getDouble("avgRTT");
+            double successRate = entry.getDouble("successRate");
+            int successfulInvocations = (int) Math.round(successRate * invocations);
+
+            // update the fields // TODO update cost
+            double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            if (success) {
+                successfulInvocations++;
+            }
+            double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
+
+            // update the functiondeployment table
+            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+                    + "KMS_Arn = ?";
+            preparedStatement = connection.prepareStatement(updateFunctionDeployment);
+            preparedStatement.setDouble(1, newAvgRTT);
+            preparedStatement.setDouble(2, newSuccessRate);
+            preparedStatement.setInt(3, (invocations + 1));
+            preparedStatement.setString(4, function_id);
+            preparedStatement.executeUpdate();
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+    }
+
+    /**
+     * Update the metadata DB for the given document.
+     *
+     * @param document to update
+     */
+    private static void updateMetadata(Document document) {
+        // TODO update cost
+        //  TODO check if computationalSpeed, memorySpeed, ioSpeed is entered, if not insert
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement = null;
+        String functionId = document.getString("function_id");
+
+        // get the functiondeployment table entry
+        ResultSet entry = getFunctionIdEntry(functionId);
+
+        try {
+            // get the first entry
+            entry.next();
+            // get the required fields
+            int functionImplementationId = entry.getInt("functionImplementation_id");
+            int functionTypeId = getFunctionTypeId(functionImplementationId);
+
+            updateFunctionDeployment(document, entry);
+            updateFunctionImplementation(document, functionImplementationId);
+            updateFunctionType(document, functionTypeId);
+
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+    }
+
+    public static long getUpdated() {
+        return updated;
+    }
+
+    public static long getSkipped() {
+        return skipped;
+    }
+
+    public static void resetCounters() {
+        updated = 0;
+        skipped = 0;
+    }
 }
