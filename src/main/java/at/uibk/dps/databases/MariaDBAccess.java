@@ -1,5 +1,7 @@
 package at.uibk.dps.databases;
 
+import at.uibk.dps.util.Provider;
+import at.uibk.dps.util.Utils;
 import org.bson.Document;
 
 import java.io.FileInputStream;
@@ -143,12 +145,54 @@ public class MariaDBAccess {
     }
 
     /**
+     * Gets the entry from the metadata DB for the given provider.
+     *
+     * @param provider to get the entry from
+     *
+     * @return the entry from the provider in the DB
+     */
+    private static ResultSet getProviderEntry(Provider provider) {
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement;
+        String query = "SELECT * FROM provider WHERE name = ?";
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, provider.name());
+            return preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return null;
+    }
+
+
+    private static double calculateCost(int memorySize, double RTT, Provider provider) {
+        // TODO instead of RTT get function runtime
+        ResultSet resultSet = getProviderEntry(provider);
+        double result = -1;
+        if (resultSet != null) {
+            try {
+                resultSet.next();
+                double invocationCost = resultSet.getDouble("invocationCost");
+                double durationGBpsCost = resultSet.getDouble("durationGBpsCost");
+
+                // fixed invocationCost + allocated memory size in GB * function runtime in sec * GBps cost
+                result = invocationCost + (((memorySize / 1000.0) * (RTT / 1000)) * durationGBpsCost);
+            } catch (SQLException throwables) {
+                throwables.printStackTrace();
+            }
+        }
+
+        return result;
+    }
+
+    /**
      * Updates the functiontype table in the metadataDB for the given document.
      *
      * @param document       to get the values
      * @param functionTypeId to get the entry
      */
-    private static void updateFunctionType(Document document, int functionTypeId) {
+    private static void updateFunctionType(Document document, int functionTypeId, double cost) {
         // TODO update cost
         Connection connection = getConnection();
 
@@ -169,25 +213,32 @@ public class MariaDBAccess {
             // get the fields from the entry
             int invocations = resultSet.getInt("invocations");
             double avgRTT = resultSet.getDouble("avgRTT");
+            double avgCost = resultSet.getDouble("avgCost");
             double successRate = resultSet.getDouble("successRate");
             int successfulInvocations = (int) Math.round(successRate * invocations);
 
+            // if the cost is -1 or 0, set it to the average cost to prevent wrong values
+            if (cost == -1 || cost == 0) {
+                cost = avgCost;
+            }
+
             // update the fields
             double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            double newCost = ((avgCost * invocations) + cost) / (invocations + 1);
             if (success) {
                 successfulInvocations++;
             }
             double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
 
-            // TODO update cost
             // update the functiontype table
-            String update = "UPDATE functiontype SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+            String update = "UPDATE functiontype SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
                     + "id = ?";
             preparedStatement = connection.prepareStatement(update);
             preparedStatement.setDouble(1, newAvgRTT);
-            preparedStatement.setDouble(2, newSuccessRate);
-            preparedStatement.setInt(3, (invocations + 1));
-            preparedStatement.setInt(4, functionTypeId);
+            preparedStatement.setDouble(2, newCost);
+            preparedStatement.setDouble(3, newSuccessRate);
+            preparedStatement.setInt(4, (invocations + 1));
+            preparedStatement.setInt(5, functionTypeId);
             preparedStatement.executeUpdate();
 
         } catch (SQLException throwables) {
@@ -201,8 +252,7 @@ public class MariaDBAccess {
      * @param document                 to get the values
      * @param functionImplementationId to get the entry
      */
-    private static void updateFunctionImplementation(Document document, int functionImplementationId) {
-        // TODO update cost
+    private static void updateFunctionImplementation(Document document, int functionImplementationId, double cost) {
         Connection connection = getConnection();
         // get the fields from the document
         Long RTT = document.getLong("RTT");
@@ -223,11 +273,18 @@ public class MariaDBAccess {
             // get the fields from the entry
             int invocations = resultSet.getInt("invocations");
             double avgRTT = resultSet.getDouble("avgRTT");
+            double avgCost = resultSet.getDouble("avgCost");
             double successRate = resultSet.getDouble("successRate");
             int successfulInvocations = (int) Math.round(successRate * invocations);
 
+            // if the cost is -1 or 0, set it to the average cost to prevent wrong values
+            if (cost == -1 || cost == 0) {
+                cost = avgCost;
+            }
+
             // update the fields
             double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            double newCost = ((avgCost * invocations) + cost) / (invocations + 1);
             if (success) {
                 successfulInvocations++;
             }
@@ -235,13 +292,14 @@ public class MariaDBAccess {
 
             // TODO update cost
             // update the functionimplementation table
-            String updateFunctionImplementation = "UPDATE functionimplementation SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+            String updateFunctionImplementation = "UPDATE functionimplementation SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
                     + "id = ?";
             preparedStatement = connection.prepareStatement(updateFunctionImplementation);
             preparedStatement.setDouble(1, newAvgRTT);
-            preparedStatement.setDouble(2, newSuccessRate);
-            preparedStatement.setInt(3, (invocations + 1));
-            preparedStatement.setInt(4, functionImplementationId);
+            preparedStatement.setDouble(2, newCost);
+            preparedStatement.setDouble(3, newSuccessRate);
+            preparedStatement.setInt(4, (invocations + 1));
+            preparedStatement.setInt(5, functionImplementationId);
             preparedStatement.executeUpdate();
 
         } catch (SQLException throwables) {
@@ -255,7 +313,7 @@ public class MariaDBAccess {
      * @param document to get the values
      * @param entry    the entry to update
      */
-    private static void updateFunctionDeployment(Document document, ResultSet entry) {
+    private static void updateFunctionDeployment(Document document, ResultSet entry, double cost) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement = null;
 
@@ -267,24 +325,32 @@ public class MariaDBAccess {
             // get the required fields
             int invocations = entry.getInt("invocations");
             double avgRTT = entry.getDouble("avgRTT");
+            double avgCost = entry.getDouble("avgCost");
             double successRate = entry.getDouble("successRate");
             int successfulInvocations = (int) Math.round(successRate * invocations);
 
-            // update the fields // TODO update cost
+            // if the cost is -1 or 0, set it to the average cost to prevent wrong values
+            if (cost == -1 || cost == 0) {
+                cost = avgCost;
+            }
+
+            // update the fields
             double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            double newCost = ((avgCost * invocations) + cost) / (invocations + 1);
             if (success) {
                 successfulInvocations++;
             }
             double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
 
             // update the functiondeployment table
-            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, successRate = ?, invocations = ? WHERE "
+            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
                     + "KMS_Arn = ?";
             preparedStatement = connection.prepareStatement(updateFunctionDeployment);
             preparedStatement.setDouble(1, newAvgRTT);
-            preparedStatement.setDouble(2, newSuccessRate);
-            preparedStatement.setInt(3, (invocations + 1));
-            preparedStatement.setString(4, function_id);
+            preparedStatement.setDouble(2, newCost);
+            preparedStatement.setDouble(3, newSuccessRate);
+            preparedStatement.setInt(4, (invocations + 1));
+            preparedStatement.setString(5, function_id);
             preparedStatement.executeUpdate();
 
         } catch (SQLException throwables) {
@@ -303,6 +369,15 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         PreparedStatement preparedStatement = null;
         String functionId = document.getString("function_id");
+        Long RTT = document.getLong("RTT");
+        Integer memorySize = document.getInteger("memorySize");
+        Provider provider = Utils.detectProvider(functionId);
+        double cost = -1;
+
+        // TODO all providers or only AWS?
+        if (memorySize != null && provider != Provider.FAIL) {
+            cost = calculateCost(memorySize, RTT, provider);
+        }
 
         // get the functiondeployment table entry
         ResultSet entry = getFunctionIdEntry(functionId);
@@ -314,9 +389,9 @@ public class MariaDBAccess {
             int functionImplementationId = entry.getInt("functionImplementation_id");
             int functionTypeId = getFunctionTypeId(functionImplementationId);
 
-            updateFunctionDeployment(document, entry);
-            updateFunctionImplementation(document, functionImplementationId);
-            updateFunctionType(document, functionTypeId);
+            updateFunctionDeployment(document, entry, cost);
+            updateFunctionImplementation(document, functionImplementationId, cost);
+            updateFunctionType(document, functionTypeId, cost);
 
         } catch (SQLException throwables) {
             throwables.printStackTrace();
