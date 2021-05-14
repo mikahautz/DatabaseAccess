@@ -2,6 +2,9 @@ package at.uibk.dps.databases;
 
 import at.uibk.dps.util.Provider;
 import at.uibk.dps.util.Utils;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.bson.Document;
 
 import java.io.FileInputStream;
@@ -102,7 +105,7 @@ public class MariaDBAccess {
      *
      * @return the ResultSet
      */
-    private static ResultSet getFunctionIdEntry(String functionId) {
+    public static ResultSet getFunctionIdEntry(String functionId) {
         Connection connection = getConnection();
         String query = "SELECT * FROM functiondeployment WHERE KMS_Arn = ?";
 
@@ -184,6 +187,34 @@ public class MariaDBAccess {
         }
 
         return result;
+    }
+
+    private static int getFunctionMemory(Document document) {
+        return getFieldFromOutput(document, "functionMemory");
+    }
+
+    private static int getRuntime(Document document) {
+        // TODO calculate if not present in output
+        return getFieldFromOutput(document, "runtime");
+    }
+
+    /**
+     * Checks the output field of the document for a given key.
+     *
+     * @param document to check the field
+     * @param key
+     *
+     * @return
+     */
+    private static int getFieldFromOutput(Document document, String key) {
+        String output = document.getString("output");
+        JsonObject json = (JsonObject) JsonParser.parseString(output);
+        JsonElement element = json.get(key);
+        if (element == null) {
+            return -1;
+        } else {
+            return element.getAsInt();
+        }
     }
 
     /**
