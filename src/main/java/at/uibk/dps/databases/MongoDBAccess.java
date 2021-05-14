@@ -106,7 +106,9 @@ public class MongoDBAccess {
         if (entries == null || entries.isEmpty()) {
             return 0;
         }
-        return entries.stream()
+        // create a temporary list to prevent a ConcurrentModificationException
+        ArrayList<Document> tmp = new ArrayList<>(entries);
+        return tmp.stream()
                 .filter(d -> d.getLong("workflow_id") == workflowExecutionId
                         && d.containsKey("function_id"))
                 .max(Comparator.comparing(d -> d.getDate("endTime")))
@@ -125,7 +127,9 @@ public class MongoDBAccess {
         if (entries == null || entries.isEmpty()) {
             return 0;
         }
-        return entries.stream()
+        // create a temporary list to prevent a ConcurrentModificationException
+        ArrayList<Document> tmp = new ArrayList<>(entries);
+        return tmp.stream()
                 .filter(d -> d.getLong("workflow_id") == workflowExecutionId
                         && d.getInteger("loopCounter") == -1
                         && d.containsKey("function_id"))
@@ -133,6 +137,16 @@ public class MongoDBAccess {
                 .get()
                 .getDate("endTime")
                 .getTime();
+
+//        long endParallelFor = tmp.stream()
+//                .filter(d -> d.getLong("workflow_id") == workflowExecutionId
+//                        && d.getString("Event").equals("PARALLEL_FOR_END"))
+//                .max(Comparator.comparing(d -> d.getDate("endTime")))
+//                .orElse(new Document("endTime", new Date(0)))
+//                .getDate("endTime")
+//                .getTime();
+//
+//        return Math.max(outOfLoop, endParallelFor);
     }
 
     /**
@@ -145,7 +159,9 @@ public class MongoDBAccess {
         if (entries == null || entries.isEmpty()) {
             return 0;
         }
-        return entries.stream()
+        // create a temporary list to prevent a ConcurrentModificationException
+        ArrayList<Document> tmp = new ArrayList<>(entries);
+        return tmp.stream()
                 .filter(d -> d.getLong("workflow_id") == workflowExecutionId
                         && d.getInteger("loopCounter") != -1
                         && d.containsKey("function_id"))
