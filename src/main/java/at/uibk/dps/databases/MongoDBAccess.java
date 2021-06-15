@@ -73,7 +73,8 @@ public class MongoDBAccess {
     /**
      * Method to save a log entry to a list of entries.
      */
-    public static void saveLog(Event event, String functionId, String functionName, String functionType, String output, Long RTT, boolean success, Integer memorySize, int loopCounter, long startTime, Type type) {
+    public static void saveLog(Event event, String functionId, String functionName, String functionType, String output,
+                               Long RTT, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
         // TODO add missing fields
         Long done = null;
         if (event.toString().toLowerCase().contains("function")) {
@@ -87,8 +88,8 @@ public class MongoDBAccess {
                 .append("output", output)
                 .append("RTT", RTT)
                 .append("success", success)
-                .append("memorySize", memorySize)
                 .append("loopCounter", loopCounter)
+                .append("maxLoopCounter", maxLoopCounter)
                 .append("startTime", new Timestamp(startTime))
                 .append("endTime", new Timestamp(startTime + RTT))
                 .append("type", type.toString())

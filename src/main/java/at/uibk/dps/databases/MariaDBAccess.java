@@ -202,9 +202,9 @@ public class MariaDBAccess {
      * Checks the output field of the document for a given key.
      *
      * @param document to check the field
-     * @param key
+     * @param key      to check
      *
-     * @return
+     * @return the element for the given key as int, if it doesn't exist -1
      */
     private static int getFieldFromOutput(Document document, String key) {
         String output = document.getString("output");
@@ -351,6 +351,7 @@ public class MariaDBAccess {
         String function_id = document.getString("function_id");
         Long RTT = document.getLong("RTT");
         Boolean success = document.getBoolean("success");
+        Integer maxLoopCounter = document.getInteger("maxLoopCounter");
 
         try {
             // get the required fields
@@ -358,6 +359,7 @@ public class MariaDBAccess {
             double avgRTT = entry.getDouble("avgRTT");
             double avgCost = entry.getDouble("avgCost");
             double successRate = entry.getDouble("successRate");
+            int avgLoopCounter = entry.getInt("avgLoopCounter");
             int successfulInvocations = (int) Math.round(successRate * invocations);
 
             // if the cost is -1 or 0, set it to the average cost to prevent wrong values
@@ -372,16 +374,23 @@ public class MariaDBAccess {
                 successfulInvocations++;
             }
             double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
+            // if the function was not executed in a loop
+            if (maxLoopCounter == null || maxLoopCounter == -1) {
+                maxLoopCounter = 0;
+            }
+            // TODO change from ceil to round?
+            int newAvgLoopCounter = (int) Math.ceil(((avgLoopCounter * invocations) + maxLoopCounter) / (double) (invocations + 1));
 
             // update the functiondeployment table
-            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
-                    + "KMS_Arn = ?";
+            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, avgCost = ?, successRate = ?, "
+                    + "avgLoopCounter = ?, invocations = ? WHERE KMS_Arn = ?";
             preparedStatement = connection.prepareStatement(updateFunctionDeployment);
             preparedStatement.setDouble(1, newAvgRTT);
             preparedStatement.setDouble(2, newCost);
             preparedStatement.setDouble(3, newSuccessRate);
-            preparedStatement.setInt(4, (invocations + 1));
-            preparedStatement.setString(5, function_id);
+            preparedStatement.setInt(4, newAvgLoopCounter);
+            preparedStatement.setInt(5, (invocations + 1));
+            preparedStatement.setString(6, function_id);
             preparedStatement.executeUpdate();
 
         } catch (SQLException throwables) {
@@ -401,14 +410,8 @@ public class MariaDBAccess {
         PreparedStatement preparedStatement = null;
         String functionId = document.getString("function_id");
         Long RTT = document.getLong("RTT");
-        Integer memorySize = document.getInteger("memorySize");
         Provider provider = Utils.detectProvider(functionId);
         double cost = -1;
-
-        // TODO all providers or only AWS?
-        if (memorySize != null && provider != Provider.FAIL) {
-            cost = calculateCost(memorySize, RTT, provider);
-        }
 
         // get the functiondeployment table entry
         ResultSet entry = getFunctionIdEntry(functionId);
@@ -417,8 +420,14 @@ public class MariaDBAccess {
             // get the first entry
             entry.next();
             // get the required fields
+            int memorySize = entry.getInt("memorySize");
             int functionImplementationId = entry.getInt("functionImplementation_id");
             int functionTypeId = getFunctionTypeId(functionImplementationId);
+
+            // TODO all providers or only AWS?
+            if (memorySize != -1 && provider != Provider.FAIL) {
+                cost = calculateCost(memorySize, RTT, provider);
+            }
 
             updateFunctionDeployment(document, entry, cost);
             updateFunctionImplementation(document, functionImplementationId, cost);
