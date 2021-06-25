@@ -77,7 +77,9 @@ public class MongoDBAccess {
                                Long RTT, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
         // TODO add missing fields
         Long done = null;
-        if (event.toString().toLowerCase().contains("function")) {
+        if (event.toString().equals("FUNCTION_CANCELED")) {
+            done = 2L;
+        } else if (event.toString().toLowerCase().contains("function")) {
             done = 0L;
         }
         Document log = new Document("workflow_id", workflowExecutionId)
@@ -179,7 +181,6 @@ public class MongoDBAccess {
      * @return a FindIterable containing documents
      */
     public static FindIterable<Document> findNewEntries() {
-        // TODO exclude canceled functions
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
