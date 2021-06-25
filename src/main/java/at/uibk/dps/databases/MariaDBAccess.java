@@ -154,13 +154,36 @@ public class MariaDBAccess {
      *
      * @return the entry from the provider in the DB
      */
-    private static ResultSet getProviderEntry(Provider provider) {
+    public static ResultSet getProviderEntry(Provider provider) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
         String query = "SELECT * FROM provider WHERE name = ?";
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setString(1, provider.name());
+            return preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * Gets the entry from the metadata DB for the given region and provider.
+     *
+     * @param region   to get the entry from
+     * @param provider to get the entry from
+     *
+     * @return the entry from the region in the DB
+     */
+    public static ResultSet getRegionEntry(String region, Provider provider) {
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement;
+        String query = "SELECT * FROM region WHERE region = ? AND provider = ?";
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setString(1, region);
+            preparedStatement.setString(2, provider.name());
             return preparedStatement.executeQuery();
         } catch (SQLException throwables) {
             throwables.printStackTrace();
