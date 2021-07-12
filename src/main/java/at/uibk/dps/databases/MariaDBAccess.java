@@ -124,6 +124,31 @@ public class MariaDBAccess {
     }
 
     /**
+     * Get the entry with the id of the record in the functiondeployment table of the metadata DB.
+     *
+     * @param id to get the entry
+     *
+     * @return the ResultSet
+     */
+    public static ResultSet getDeploymentById(int id) {
+        Connection connection = getConnection();
+        String query = "SELECT * FROM functiondeployment WHERE id = ?";
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, id);
+            resultSet = preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+
+        return resultSet;
+    }
+
+    /**
      * Gets the id from the metadata DB for the functiontype with the given name and type.
      *
      * @param functionImplementationId to get the entry
@@ -191,9 +216,29 @@ public class MariaDBAccess {
         return null;
     }
 
+    /**
+     * Gets all entries that have the given functionImplementationId.
+     *
+     * @param functionImplementationId to get the entry from
+     *
+     * @return the entries with the given functionImplementationId.
+     */
+    public static ResultSet getDeploymentsWithImplementationId(int functionImplementationId) {
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement;
+        String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ?";
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, functionImplementationId);
+            return preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return null;
+    }
 
-    private static double calculateCost(int memorySize, double RTT, Provider provider) {
-        // TODO instead of RTT get function runtime
+
+    public static double calculateCost(int memorySize, double runtime, Provider provider) {
         ResultSet resultSet = getProviderEntry(provider);
         double result = -1;
         if (resultSet != null) {
@@ -201,9 +246,13 @@ public class MariaDBAccess {
                 resultSet.next();
                 double invocationCost = resultSet.getDouble("invocationCost");
                 double durationGBpsCost = resultSet.getDouble("durationGBpsCost");
+                int roundTo = resultSet.getInt("unitTimems");
+                runtime = ((runtime + roundTo - 1) / roundTo) * roundTo;
 
                 // fixed invocationCost + allocated memory size in GB * function runtime in sec * GBps cost
-                result = invocationCost + (((memorySize / 1000.0) * (RTT / 1000)) * durationGBpsCost);
+                result = invocationCost + (((memorySize / 1000.0) * (runtime / 1000)) * durationGBpsCost);
+                // TODO add GHz/s for google?
+
             } catch (SQLException throwables) {
                 throwables.printStackTrace();
             }
@@ -375,11 +424,13 @@ public class MariaDBAccess {
         Long RTT = document.getLong("RTT");
         Boolean success = document.getBoolean("success");
         Integer maxLoopCounter = document.getInteger("maxLoopCounter");
+        int runtime = getRuntime(document);
 
         try {
             // get the required fields
             int invocations = entry.getInt("invocations");
             double avgRTT = entry.getDouble("avgRTT");
+            double avgRuntime = entry.getDouble("avgRuntime");
             double avgCost = entry.getDouble("avgCost");
             double successRate = entry.getDouble("successRate");
             int avgLoopCounter = entry.getInt("avgLoopCounter");
@@ -389,9 +440,13 @@ public class MariaDBAccess {
             if (cost == -1 || cost == 0) {
                 cost = avgCost;
             }
+            if (runtime == -1) {
+                runtime = (int) avgRuntime;
+            }
 
             // update the fields
             double newAvgRTT = ((avgRTT * invocations) + RTT) / (invocations + 1);
+            double newRuntime = ((avgRuntime * invocations) + runtime) / (invocations + 1);
             double newCost = ((avgCost * invocations) + cost) / (invocations + 1);
             if (success) {
                 successfulInvocations++;
@@ -405,15 +460,16 @@ public class MariaDBAccess {
             int newAvgLoopCounter = (int) Math.ceil(((avgLoopCounter * invocations) + maxLoopCounter) / (double) (invocations + 1));
 
             // update the functiondeployment table
-            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, avgCost = ?, successRate = ?, "
-                    + "avgLoopCounter = ?, invocations = ? WHERE KMS_Arn = ?";
+            String updateFunctionDeployment = "UPDATE functiondeployment SET avgRTT = ?, avgRuntime = ?, avgCost = ?, "
+                    + "successRate = ?, avgLoopCounter = ?, invocations = ? WHERE KMS_Arn = ?";
             preparedStatement = connection.prepareStatement(updateFunctionDeployment);
             preparedStatement.setDouble(1, newAvgRTT);
-            preparedStatement.setDouble(2, newCost);
-            preparedStatement.setDouble(3, newSuccessRate);
-            preparedStatement.setInt(4, newAvgLoopCounter);
-            preparedStatement.setInt(5, (invocations + 1));
-            preparedStatement.setString(6, function_id);
+            preparedStatement.setDouble(2, newRuntime);
+            preparedStatement.setDouble(3, newCost);
+            preparedStatement.setDouble(4, newSuccessRate);
+            preparedStatement.setInt(5, newAvgLoopCounter);
+            preparedStatement.setInt(6, (invocations + 1));
+            preparedStatement.setString(7, function_id);
             preparedStatement.executeUpdate();
 
         } catch (SQLException throwables) {
@@ -427,14 +483,13 @@ public class MariaDBAccess {
      * @param document to update
      */
     private static void updateMetadata(Document document) {
-        // TODO update cost
         //  TODO check if computationalSpeed, memorySpeed, ioSpeed is entered, if not insert
         Connection connection = getConnection();
         PreparedStatement preparedStatement = null;
         String functionId = document.getString("function_id");
         Long RTT = document.getLong("RTT");
         Provider provider = Utils.detectProvider(functionId);
-        double cost = -1;
+        double cost = document.getDouble("cost");
 
         // get the functiondeployment table entry
         ResultSet entry = getFunctionIdEntry(functionId);
@@ -446,11 +501,6 @@ public class MariaDBAccess {
             int memorySize = entry.getInt("memorySize");
             int functionImplementationId = entry.getInt("functionImplementation_id");
             int functionTypeId = getFunctionTypeId(functionImplementationId);
-
-            // TODO all providers or only AWS?
-            if (memorySize != -1 && provider != Provider.FAIL) {
-                cost = calculateCost(memorySize, RTT, provider);
-            }
 
             updateFunctionDeployment(document, entry, cost);
             updateFunctionImplementation(document, functionImplementationId, cost);
