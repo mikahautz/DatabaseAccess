@@ -71,10 +71,19 @@ public class MongoDBAccess {
     }
 
     /**
-     * Method to save a log entry to a list of entries.
+     * Method to save a log entry to a list of entries, sets the 'cost' field to -1.
      */
     public static void saveLog(Event event, String functionId, String functionName, String functionType, String output,
                                Long RTT, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
+        saveLog(event, functionId, functionName, functionType, output, RTT, -1, success, loopCounter, maxLoopCounter,
+                startTime, type);
+    }
+
+    /**
+     * Method to save a log entry to a list of entries.
+     */
+    public static void saveLog(Event event, String functionId, String functionName, String functionType, String output,
+                               Long RTT, double cost, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
         // TODO add missing fields
         Long done = null;
         if (event.toString().equals("FUNCTION_CANCELED")) {
@@ -89,6 +98,7 @@ public class MongoDBAccess {
                 .append("Event", event.toString())
                 .append("output", output)
                 .append("RTT", RTT)
+                .append("cost", cost)
                 .append("success", success)
                 .append("loopCounter", loopCounter)
                 .append("maxLoopCounter", maxLoopCounter)
