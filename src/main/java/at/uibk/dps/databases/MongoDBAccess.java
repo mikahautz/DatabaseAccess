@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.sql.Timestamp;
 import java.util.*;
 
 import static com.mongodb.client.model.Filters.*;
@@ -31,6 +30,8 @@ public class MongoDBAccess {
     private static MongoClient mongoClient;
     private static MongoDBAccess mongoDBAccess;
     private static List<Document> entries = Collections.synchronizedList(new ArrayList<>());
+    // used to determine when the end date of a log entry was already used as a new start date if loopCounter > maxConcurrency
+    private static List<Document> usedForMaxConcurrency = Collections.synchronizedList(new ArrayList<>());
     private static String DATABASE;
     private static String COLLECTION;
 
@@ -102,8 +103,8 @@ public class MongoDBAccess {
                 .append("success", success)
                 .append("loopCounter", loopCounter)
                 .append("maxLoopCounter", maxLoopCounter)
-                .append("startTime", new Timestamp(startTime))
-                .append("endTime", new Timestamp(startTime + RTT))
+                .append("startTime", new Date(startTime))
+                .append("endTime", new Date(startTime + RTT))
                 .append("type", type.toString())
                 .append("done", done); // flag used to update metadataDB
         entries.add(log);
@@ -185,6 +186,48 @@ public class MongoDBAccess {
     }
 
     /**
+     * Checks in the list of logs for the smallest end time of the current parallelFor construct. Is used to determine
+     * the next starting time for a function within a parallelFor that is over the maximum concurrency limit.
+     *
+     * @param functionId to check the log entries for
+     *
+     * @return the earliest finishing time in a parallelFor that has not been used yet for this function
+     */
+    public static synchronized long getFirstAvailableStartTime(String functionId) {
+        if (entries == null || entries.isEmpty()) {
+            return 0;
+        }
+        boolean flag = true;
+        // create a temporary list to prevent a ConcurrentModificationException
+        ArrayList<Document> tmp = null;
+        ArrayList<Document> loopLogs = null;
+        Optional<Document> doc = Optional.empty();
+        // check for entry until one is found
+        while (flag) {
+            tmp = new ArrayList<>(entries);
+            loopLogs = new ArrayList<>();
+            Collections.reverse(tmp);
+            /* only get the documents of the current parallelFor
+             * if there was a parallelFor previously, the PARALLEL_FOR_END event signals the end of that parallelFor */
+            for (Document d : tmp) {
+                if (d.getString("Event").equals("PARALLEL_FOR_END")) {
+                    break;
+                }
+                if (d.containsKey("function_id") && functionId.equals(d.getString("function_id")) &&
+                        d.getInteger("loopCounter") != -1 && d.getLong("workflow_id") == workflowExecutionId &&
+                        !usedForMaxConcurrency.contains(d)) {
+                    loopLogs.add(d);
+                }
+            }
+            // get the entry with the smallest end time
+            doc = loopLogs.stream().min(Comparator.comparing(d -> d.getDate("endTime")));
+            flag = !doc.isPresent();
+        }
+        usedForMaxConcurrency.add(doc.get());
+        return doc.get().getDate("endTime").getTime();
+    }
+
+    /**
      * Returns all entries from the logs that were executions, have a function_id field and have not been updated in the
      * metadata DB already.
      *
@@ -208,6 +251,15 @@ public class MongoDBAccess {
         if (!entries.isEmpty()) {
             dbCollection.insertMany(entries);
         }
+    }
+
+    /**
+     * Get the list of all log entries.
+     *
+     * @return a list of documents containing all logs.
+     */
+    public static List<Document> getAllEntries() {
+        return entries;
     }
 
     /**

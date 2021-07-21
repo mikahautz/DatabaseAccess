@@ -226,7 +226,7 @@ public class MariaDBAccess {
     public static ResultSet getDeploymentsWithImplementationId(int functionImplementationId) {
         Connection connection = getConnection();
         PreparedStatement preparedStatement;
-        String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ?";
+        String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ? AND invocations > 0";
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setInt(1, functionImplementationId);
@@ -235,6 +235,117 @@ public class MariaDBAccess {
             throwables.printStackTrace();
         }
         return null;
+    }
+
+    /**
+     * Gets all entries that have the given functionImplementationId and memorySize;
+     *
+     * @param functionImplementationId to get the entry from
+     * @param memorySize               to get the entry from
+     *
+     * @return the entries with the given functionImplementationId and memorySize
+     */
+    public static ResultSet getDeploymentsWithImplementationIdAndMemorySize(int functionImplementationId, int memorySize) {
+        Connection connection = getConnection();
+        PreparedStatement preparedStatement;
+        String query = "SELECT * FROM functiondeployment WHERE functionImplementation_id = ? AND memorySize = ?";
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, functionImplementationId);
+            preparedStatement.setInt(2, memorySize);
+            return preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * Gets a functionImplementation entry with the given id.
+     *
+     * @param id to get the entry
+     *
+     * @return the entry with the given id
+     */
+    public static ResultSet getImplementationById(int id) {
+        Connection connection = getConnection();
+        String query = "SELECT * FROM functionimplementation WHERE id = ?";
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+
+        try {
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, id);
+            resultSet = preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+
+        return resultSet;
+    }
+
+    /**
+     * Gets a set of CPUs for the given provider.
+     *
+     * @param provider to get the CPUs from
+     *
+     * @return a set of CPUs for the given provider
+     */
+    public static ResultSet getCpuByProvider(Provider provider, int parallel, int percentage) {
+        Connection connection = getConnection();
+        String query = "SELECT * FROM cpu WHERE provider = ? AND ? >= from_percentage AND ? < to_percentage AND parallel = ?";
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        ResultSet providerEntry = getProviderEntry(provider);
+        try {
+            providerEntry.next();
+            int provider_id = providerEntry.getInt("id");
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, provider_id);
+            preparedStatement.setInt(2, percentage);
+            preparedStatement.setInt(3, percentage);
+            preparedStatement.setInt(4, parallel);
+            resultSet = preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return resultSet;
+    }
+
+    /**
+     * Gets a set of CPUs for the given provider and region.
+     *
+     * @param provider to get the CPUs from
+     * @param region   to get the CPUs from
+     *
+     * @return a set of CPUs for the given provider and region
+     */
+    public static ResultSet getCpuByProviderAndRegion(Provider provider, String region, int parallel, int percentage) {
+        Connection connection = getConnection();
+        String query = "SELECT * FROM cpu WHERE provider = ? AND region = ? AND ? >= from_percentage AND ? < to_percentage AND parallel = ?";
+
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        ResultSet providerEntry = getProviderEntry(provider);
+        ResultSet regionEntry = getRegionEntry(region, provider);
+        try {
+            providerEntry.next();
+            int provider_id = providerEntry.getInt("id");
+            regionEntry.next();
+            int region_id = regionEntry.getInt("id");
+            preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, provider_id);
+            preparedStatement.setInt(2, region_id);
+            preparedStatement.setInt(3, percentage);
+            preparedStatement.setInt(4, percentage);
+            preparedStatement.setInt(5, parallel);
+            resultSet = preparedStatement.executeQuery();
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        }
+        return resultSet;
     }
 
 
