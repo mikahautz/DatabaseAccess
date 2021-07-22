@@ -74,16 +74,16 @@ public class MongoDBAccess {
     /**
      * Method to save a log entry to a list of entries, sets the 'cost' field to -1.
      */
-    public static void saveLog(Event event, String functionId, String functionName, String functionType, String output,
+    public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
                                Long RTT, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
-        saveLog(event, functionId, functionName, functionType, output, RTT, -1, success, loopCounter, maxLoopCounter,
+        saveLog(event, functionId, deployment, functionName, functionType, output, RTT, -1, success, loopCounter, maxLoopCounter,
                 startTime, type);
     }
 
     /**
      * Method to save a log entry to a list of entries.
      */
-    public static void saveLog(Event event, String functionId, String functionName, String functionType, String output,
+    public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
                                Long RTT, double cost, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
         // TODO add missing fields
         Long done = null;
@@ -94,6 +94,7 @@ public class MongoDBAccess {
         }
         Document log = new Document("workflow_id", workflowExecutionId)
                 .append("function_id", functionId)
+                .append("deployment", deployment)
                 .append("functionName", functionName)
                 .append("functionType", functionType)
                 .append("Event", event.toString())
