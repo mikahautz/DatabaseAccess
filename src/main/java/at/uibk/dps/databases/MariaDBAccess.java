@@ -91,8 +91,8 @@ public class MariaDBAccess {
     private static boolean functionIdEntryExists(Document document) {
         try {
             return getFunctionIdEntry(document.getString("function_id")).next();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return false;
     }
@@ -109,15 +109,15 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         String query = "SELECT * FROM functiondeployment WHERE KMS_Arn = ?";
 
-        PreparedStatement preparedStatement = null;
+        PreparedStatement preparedStatement;
         ResultSet resultSet = null;
 
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setString(1, functionId);
             resultSet = preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
 
         return resultSet;
@@ -134,15 +134,15 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         String query = "SELECT * FROM functiondeployment WHERE id = ?";
 
-        PreparedStatement preparedStatement = null;
+        PreparedStatement preparedStatement;
         ResultSet resultSet = null;
 
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setInt(1, id);
             resultSet = preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
 
         return resultSet;
@@ -166,8 +166,8 @@ public class MariaDBAccess {
             if (resultSet.next()) {
                 return resultSet.getInt("functionType_id");
             }
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return -1;
     }
@@ -187,8 +187,8 @@ public class MariaDBAccess {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setString(1, provider.name());
             return preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return null;
     }
@@ -210,8 +210,8 @@ public class MariaDBAccess {
             preparedStatement.setString(1, region);
             preparedStatement.setString(2, provider.name());
             return preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return null;
     }
@@ -231,8 +231,8 @@ public class MariaDBAccess {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setInt(1, functionImplementationId);
             return preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return null;
     }
@@ -254,8 +254,8 @@ public class MariaDBAccess {
             preparedStatement.setInt(1, functionImplementationId);
             preparedStatement.setInt(2, memorySize);
             return preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return null;
     }
@@ -271,15 +271,15 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         String query = "SELECT * FROM functionimplementation WHERE id = ?";
 
-        PreparedStatement preparedStatement = null;
+        PreparedStatement preparedStatement;
         ResultSet resultSet = null;
 
         try {
             preparedStatement = connection.prepareStatement(query);
             preparedStatement.setInt(1, id);
             resultSet = preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
 
         return resultSet;
@@ -296,7 +296,7 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         String query = "SELECT * FROM cpu WHERE provider = ? AND ? >= from_percentage AND ? < to_percentage AND parallel = ?";
 
-        PreparedStatement preparedStatement = null;
+        PreparedStatement preparedStatement;
         ResultSet resultSet = null;
         ResultSet providerEntry = getProviderEntry(provider);
         try {
@@ -308,8 +308,8 @@ public class MariaDBAccess {
             preparedStatement.setInt(3, percentage);
             preparedStatement.setInt(4, parallel);
             resultSet = preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return resultSet;
     }
@@ -342,13 +342,21 @@ public class MariaDBAccess {
             preparedStatement.setInt(4, percentage);
             preparedStatement.setInt(5, parallel);
             resultSet = preparedStatement.executeQuery();
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
         return resultSet;
     }
 
-
+    /**
+     * Calculates the cost for the given parameters.
+     *
+     * @param memorySize to calculate
+     * @param runtime    to calculate
+     * @param provider   to calculate
+     *
+     * @return the cost
+     */
     public static double calculateCost(int memorySize, double runtime, Provider provider) {
         ResultSet resultSet = getProviderEntry(provider);
         double result = -1;
@@ -364,8 +372,8 @@ public class MariaDBAccess {
                 result = invocationCost + (((memorySize / 1000.0) * (runtime / 1000)) * durationGBpsCost);
                 // TODO add GHz/s for google?
 
-            } catch (SQLException throwables) {
-                throwables.printStackTrace();
+            } catch (SQLException exception) {
+                exception.printStackTrace();
             }
         }
 
@@ -401,7 +409,7 @@ public class MariaDBAccess {
     }
 
     /**
-     * Updates the functiontype table in the metadataDB for the given document.
+     * Updates the functionType table in the metadataDB for the given document.
      *
      * @param document       to get the values
      * @param functionTypeId to get the entry
@@ -444,7 +452,7 @@ public class MariaDBAccess {
             }
             double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
 
-            // update the functiontype table
+            // update the functionType table
             String update = "UPDATE functiontype SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
                     + "id = ?";
             preparedStatement = connection.prepareStatement(update);
@@ -455,8 +463,8 @@ public class MariaDBAccess {
             preparedStatement.setInt(5, functionTypeId);
             preparedStatement.executeUpdate();
 
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
     }
 
@@ -516,8 +524,8 @@ public class MariaDBAccess {
             preparedStatement.setInt(5, functionImplementationId);
             preparedStatement.executeUpdate();
 
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
     }
 
@@ -583,8 +591,8 @@ public class MariaDBAccess {
             preparedStatement.setString(7, function_id);
             preparedStatement.executeUpdate();
 
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
     }
 
@@ -617,8 +625,8 @@ public class MariaDBAccess {
             updateFunctionImplementation(document, functionImplementationId, cost);
             updateFunctionType(document, functionTypeId, cost);
 
-        } catch (SQLException throwables) {
-            throwables.printStackTrace();
+        } catch (SQLException exception) {
+            exception.printStackTrace();
         }
     }
 
