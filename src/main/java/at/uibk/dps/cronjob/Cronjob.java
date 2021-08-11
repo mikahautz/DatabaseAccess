@@ -15,6 +15,7 @@ public class Cronjob extends TimerTask {
     @Override
     public void run() {
         MariaDBAccess.resetCounters();
+        MariaDBAccess.setPrint(true);
         MongoDBAccess.findNewEntries().forEach(MariaDBAccess.updateMD);
 
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss");

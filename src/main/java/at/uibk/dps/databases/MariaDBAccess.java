@@ -1,7 +1,6 @@
 package at.uibk.dps.databases;
 
 import at.uibk.dps.util.Provider;
-import at.uibk.dps.util.Utils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -22,6 +21,10 @@ public class MariaDBAccess {
     private static MariaDBAccess mariaDBAccess;
     private static Connection mariaConnection = null;
     /**
+     * Specifies whether some information should be printed or not;
+     */
+    private static boolean print;
+    /**
      * Counts the amount of skipped logs while updating.
      */
     private static long skipped = 0;
@@ -38,14 +41,18 @@ public class MariaDBAccess {
         public void accept(final Document document) {
             if (document.getString("function_id") != null) {
                 if (functionIdEntryExists(document)) {
-                    System.out.println("Updating entries for function with id '" + document.getString("function_id") + "'.");
+                    if (print) {
+                        System.out.println("Updating entries for function with id '" + document.getString("function_id") + "'.");
+                    }
                     updateMetadata(document);
                     updated++;
                     // set the log entry as done
                     MongoDBAccess.setAsDone(document, 1L);
                 } else {
-                    System.out.println("No entry for function with id '" + document.getString("function_id") +
-                            "' found. Skipped.");
+                    if (print) {
+                        System.out.println("No entry for function with id '" + document.getString("function_id") +
+                                "' found. Skipped.");
+                    }
                     // set the log entry as ignored
                     MongoDBAccess.setAsDone(document, 2L);
                     skipped++;
@@ -370,7 +377,26 @@ public class MariaDBAccess {
 
                 // fixed invocationCost + allocated memory size in GB * function runtime in sec * GBps cost
                 result = invocationCost + (((memorySize / 1000.0) * (runtime / 1000)) * durationGBpsCost);
-                // TODO add GHz/s for google?
+
+                if (provider == Provider.GOOGLE) {
+                    double durationGHzpsCost = resultSet.getDouble("durationGHzpsCost");
+                    int mhz;
+                    // values as explained in https://cloud.google.com/functions/pricing
+                    if (memorySize < 256) {
+                        mhz = 200;
+                    } else if (memorySize < 512) {
+                        mhz = 400;
+                    } else if (memorySize < 1024) {
+                        mhz = 800;
+                    } else if (memorySize < 2048) {
+                        mhz = 1400;
+                    } else if (memorySize < 4096) {
+                        mhz = 2400;
+                    } else {
+                        mhz = 4800;
+                    }
+                    result += ((mhz / 1000.0) * (runtime / 1000)) * durationGHzpsCost;
+                }
 
             } catch (SQLException exception) {
                 exception.printStackTrace();
@@ -385,7 +411,6 @@ public class MariaDBAccess {
     }
 
     private static int getRuntime(Document document) {
-        // TODO calculate if not present in output
         return getFieldFromOutput(document, "runtime");
     }
 
@@ -398,9 +423,13 @@ public class MariaDBAccess {
      * @return the element for the given key as int, if it doesn't exist -1
      */
     private static int getFieldFromOutput(Document document, String key) {
+        JsonElement element = null;
         String output = document.getString("output");
-        JsonObject json = (JsonObject) JsonParser.parseString(output);
-        JsonElement element = json.get(key);
+        if (output != null) {
+            JsonObject json = (JsonObject) JsonParser.parseString(output);
+            element = json.get(key);
+        }
+
         if (element == null) {
             return -1;
         } else {
@@ -606,8 +635,6 @@ public class MariaDBAccess {
         Connection connection = getConnection();
         PreparedStatement preparedStatement = null;
         String functionId = document.getString("function_id");
-        Long RTT = document.getLong("RTT");
-        Provider provider = Utils.detectProvider(functionId);
         double cost = document.getDouble("cost");
 
         // get the functiondeployment table entry
@@ -628,6 +655,10 @@ public class MariaDBAccess {
         } catch (SQLException exception) {
             exception.printStackTrace();
         }
+    }
+
+    public static void setPrint(boolean print) {
+        MariaDBAccess.print = print;
     }
 
     public static long getUpdated() {
