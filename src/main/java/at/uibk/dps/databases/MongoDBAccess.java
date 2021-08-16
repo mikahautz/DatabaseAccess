@@ -72,6 +72,14 @@ public class MongoDBAccess {
     }
 
     /**
+     * Method to save a workflow-start event and its workflow-content and input.
+     */
+    public static void saveLogWorkflowStart(Type type, String workflowContent, String workflowInput, long start) {
+        saveLog(Event.WORKFLOW_START, null, null, null, null, null, 0L, -1,
+                true, -1, -1, start, type, workflowContent, workflowInput);
+    }
+
+    /**
      * Method to save a log entry to a list of entries, sets the 'cost' field to -1.
      */
     public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
@@ -81,10 +89,20 @@ public class MongoDBAccess {
     }
 
     /**
-     * Method to save a log entry to a list of entries.
+     * Method to save a log entry to a list of entries, sets the workflowContent and workflowInput to null.
      */
     public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
                                Long RTT, double cost, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type) {
+        saveLog(event, functionId, deployment, functionName, functionType, output, RTT, cost, success, loopCounter, maxLoopCounter, startTime, type,
+                null, null);
+    }
+
+    /**
+     * Method to save a log entry to a list of entries.
+     */
+    public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
+                               Long RTT, double cost, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type,
+                               String workflowContent, String workflowInput) {
         // TODO add missing fields
         Long done = null;
         if (event.toString().equals("FUNCTION_CANCELED")) {
@@ -93,6 +111,8 @@ public class MongoDBAccess {
             done = 0L;
         }
         Document log = new Document("workflow_id", workflowExecutionId)
+                .append("workflowContent", workflowContent)
+                .append("workflowInput", workflowInput)
                 .append("function_id", functionId)
                 .append("deployment", deployment)
                 .append("functionName", functionName)
