@@ -35,7 +35,7 @@ public class MongoDBAccess {
     private static String DATABASE;
     private static String COLLECTION;
 
-    private MongoDBAccess() {
+    private MongoDBAccess() throws IOException {
         // disable the logging for mongoDB on stdout
         LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
         Logger mongoLogger = loggerContext.getLogger("org.mongodb.driver");
@@ -43,11 +43,8 @@ public class MongoDBAccess {
 
         // read the required properties from file
         Properties databaseFile = new Properties();
-        try {
-            databaseFile.load(new FileInputStream(PATH_TO_PROPERTIES));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        databaseFile.load(new FileInputStream(PATH_TO_PROPERTIES));
+
         final String host = databaseFile.getProperty("host");
         final int port = Integer.parseInt(databaseFile.getProperty("port"));
         final String username = databaseFile.getProperty("username");
@@ -64,7 +61,7 @@ public class MongoDBAccess {
                         .build());
     }
 
-    public static MongoClient getConnection() {
+    public static MongoClient getConnection() throws IOException {
         if (mongoClient == null) {
             mongoDBAccess = new MongoDBAccess();
         }
@@ -255,7 +252,11 @@ public class MongoDBAccess {
      * @return a FindIterable containing documents
      */
     public static FindIterable<Document> findNewEntries() {
-        MongoClient client = getConnection();
+        try {
+            MongoClient client = getConnection();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
         return dbCollection.find(and(eq("done", 0L), not(eq("function_id", null)),
@@ -265,7 +266,7 @@ public class MongoDBAccess {
     /**
      * Adds all documents stored in the list of entries to the mongo database.
      */
-    public static void addAllEntries() {
+    public static void addAllEntries() throws IOException {
         MongoClient client = getConnection();
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
@@ -290,7 +291,11 @@ public class MongoDBAccess {
      * @param value    the value to set the field to, 1 means "done", 2 means "ignored"
      */
     public static void setAsDone(Document document, Long value) {
-        MongoClient client = getConnection();
+        try {
+            MongoClient client = getConnection();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         MongoDatabase mongoDatabase = mongoClient.getDatabase(DATABASE);
         MongoCollection<Document> dbCollection = mongoDatabase.getCollection(COLLECTION);
         ObjectId id = (ObjectId) document.get("_id");
