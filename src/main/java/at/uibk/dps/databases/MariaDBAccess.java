@@ -1,6 +1,7 @@
 package at.uibk.dps.databases;
 
 import at.uibk.dps.util.Provider;
+import at.uibk.dps.util.Utils;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -425,6 +426,7 @@ public class MariaDBAccess {
     private static int getFieldFromOutput(Document document, String key) {
         JsonElement element = null;
         String output = document.getString("output");
+
         if (output != null) {
             JsonObject json = (JsonObject) JsonParser.parseString(output);
             element = json.get(key);
@@ -647,6 +649,13 @@ public class MariaDBAccess {
             int memorySize = entry.getInt("memorySize");
             int functionImplementationId = entry.getInt("functionImplementation_id");
             int functionTypeId = getFunctionTypeId(functionImplementationId);
+
+
+            if (cost == -1) {
+                double rtt = (double) document.getLong("RTT");
+                Provider provider = Utils.detectProvider(functionId);
+                cost = calculateCost(memorySize, rtt, provider);
+            }
 
             updateFunctionDeployment(document, entry, cost);
             updateFunctionImplementation(document, functionImplementationId, cost);
