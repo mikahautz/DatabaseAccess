@@ -100,7 +100,6 @@ public class MongoDBAccess {
     public static void saveLog(Event event, String functionId, String deployment, String functionName, String functionType, String output,
                                Long RTT, double cost, boolean success, int loopCounter, int maxLoopCounter, long startTime, Type type,
                                String workflowContent, String workflowInput) {
-        // TODO add missing fields
         Long done = null;
         if (event.toString().equals("FUNCTION_CANCELED")) {
             done = 2L;

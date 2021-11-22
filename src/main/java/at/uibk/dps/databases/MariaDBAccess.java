@@ -81,7 +81,7 @@ public class MariaDBAccess {
         }
     }
 
-    public static Connection getConnection() {
+    public static synchronized Connection getConnection() {
         if (mariaConnection == null) {
             mariaDBAccess = new MariaDBAccess();
         }
@@ -446,7 +446,6 @@ public class MariaDBAccess {
      * @param functionTypeId to get the entry
      */
     private static void updateFunctionType(Document document, int functionTypeId, double cost) {
-        // TODO update cost
         Connection connection = getConnection();
 
         // get the fields from the document
@@ -543,7 +542,6 @@ public class MariaDBAccess {
             }
             double newSuccessRate = (double) successfulInvocations / (double) (invocations + 1);
 
-            // TODO update cost
             // update the functionimplementation table
             String updateFunctionImplementation = "UPDATE functionimplementation SET avgRTT = ?, avgCost = ?, successRate = ?, invocations = ? WHERE "
                     + "id = ?";
@@ -633,7 +631,6 @@ public class MariaDBAccess {
      * @param document to update
      */
     private static void updateMetadata(Document document) {
-        //  TODO check if computationalSpeed, memorySpeed, ioSpeed is entered, if not insert
         Connection connection = getConnection();
         PreparedStatement preparedStatement = null;
         String functionId = document.getString("function_id");
